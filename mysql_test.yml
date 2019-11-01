@@ -1,0 +1,56 @@
+---
+ - hosts: all
+   gather_facts: false
+   tasks:
+    - name:  mysql_cteare_insert_select
+      shell: mysql -u boc --password=******* -h mysqldb -N</root/mysql_tmp/select_table.sql
+      #  chdir: /root/mysql_tmp
+      delegate_to: 192.168.11.165
+      register: mysql_result
+      run_once: true
+      ignore_errors: True
+    - debug:
+       # msg: "{{ mysql_result.stdout_lines }}"
+         var: mysql_result.stdout
+    - name:   shell print
+      command: echo {{ mysql_result.stdout_lines }}
+      register: mysql_result_shell
+    - debug:
+       # msg: "{{ mysql_result.stdout_lines }}"
+         var: mysql_result_shell
+#   - name:   for print more results
+#      debug:
+#        msg="{% for i in {{ mysql_result.results }} %} {{ i.stdout }} {% endfor %}"
+
+    - name: change string--转换变量
+      set_fact: result_change="{{ mysql_result.stdout.split(',') }}"
+
+    - name:  wich_item_result_change_print 使用转换后的变量遍历数据
+      debug:
+        msg: "{{ item }}"
+      with_items:
+        - "{{ result_change }}"
+
+
+
+    - name:  wich_item_stdout_print
+      debug:
+        msg: "{{ item }}"
+      with_items:
+        - "{{ mysql_result.stdout }}"
+
+
+    - name:  wich_item_stdout_lines_print
+      debug:
+        msg: "{{ item }}"
+      with_items:
+        - "{{ mysql_result.stdout_lines }}"
+
+    - name: change result_lines_string--转换变量
+      set_fact: result_lines_change="{{ ",".join(mysql_result.stdout_lines) }}"
+
+    - name:  wich_item_stdout_lines_print
+      debug:
+        msg: "{{ item }}"
+      with_items: 
+          - "{{ result_lines_change.split(',') }}"
