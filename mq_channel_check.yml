@@ -1,0 +1,43 @@
+---
+  - block:
+    - name: 提取队列管理器名称
+      set_fact: get_queue_manager="{{ channel_status_item.stdout | regex_findall('queue manager.*\\.') }}"
+    - set_fact: queue_manager="{{ ",".join(get_queue_manager) }}"
+
+    - name: 提取通道运行状态
+      set_fact: get_channel_status="{{ get_channel_status }} + {{ channel_status_item.stdout | regex_findall('STATUS\\((.*)\\)') }}"
+    - name: 提取MQ通道异常状态 
+      set_fact: get_channel_status_error="{{ get_channel_status | difference(mq_channel_run_status) }}"
+    - set_fact: channel_status_error="{{ get_channel_status_error | length }}"
+    - name: 获得主机hostname
+      shell: hostname
+      register: task_host_name
+    - name: 执行检查 
+      shell:
+        "{% if channel_status_error != '0' %}
+           echo {{ task_host_name.stdout ~ ' 主机:' ~ queue_manager ~  '通道存在异常状态!' | quote }}
+        {% else %}
+          echo {{ task_host_name.stdout ~ ' 主机: ' ~ queue_manager ~ '通道状态正常!' | quote }}
+        {% endif %}"
+      register: mqm_CHANNEL_status_check_result
+
+    - name: 打印get_channel_status 通道状态
+      debug:
+        msg: "{{ item }}"
+      with_items:
+       - "{{ get_channel_status }}"
+
+    - name: 打印MQ通道异常状态（若存在）
+      debug:
+        msg: "{{ item }}"
+      with_items:
+       - "{{ get_channel_status_error }}"
+    - debug: 
+        var: channel_status_error
+
+    - name: 显示通道检查结果
+      debug:
+        msg: "{{ item.stdout }}"
+      with_items:
+       - "{{ mqm_CHANNEL_status_check_result }}"
+    when: true

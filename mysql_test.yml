@@ -1,50 +1,113 @@
 ---
- - hosts: all
-   gather_facts: false
+ - hosts: online_server 
+   vars:
+    select_fact_var: "where student_id = 100;"
+    app_dir: "mysql_tmp"
+    mysql_sh_name: "mysql_run.sh"
+    mysql_sh_jinjia2_name: "mysql_run.sh.j2"
+    db_user: "boc"
+    db_password: "BOChq999"
+ #  db_server1: "192.168.11.167"
+    db_server: "{%- for host in groups['db_server'] -%} {{ host }} {%- endfor -%}"
+ # gather_facts: false
+
    tasks:
-    - name:  mysql_cteare_insert_select
-      shell: mysql -u boc --password=******* -h mysqldb -N</root/mysql_tmp/select_table.sql
+ #  - name: get dbserver ip
+ #    set_fact: db_server_var="{% for host in groups['db_server'] %} {{ host }} {% endfor %}"
+
+ #  - name: delete  db_server_var中的空格--转换变量
+ #    set_fact: db_server="{{ db_server_var.replace(' ','') }}"
+
+
+    - debug:
+        var: db_server
+
+    - name: check shell dir
+      file: 
+        path: "{{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }}"
+        mode: 0755
+        state: directory
+      delegate_to: "{{ db_server }}" 
+
+    - name: copy_mysql_select_facts_参数化查询
+      template:
+         src: "{{ mysql_sh_jinjia2_name }}"
+         dest: "{{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }}/{{ mysql_sh_name }}"
+         mode: 0755
+      delegate_to: "{{ db_server }}"
+      ignore_errors: True
+
+    - name: mysql_run.sh----running执行数据库表查询
+      shell: "chdir={{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }} removes={{ mysql_sh_name }} {{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }}/{{ mysql_sh_name }}"
+      delegate_to: "{{ db_server }}"
+      register: mysql_run_sh_result
+      run_once: true
+      ignore_errors: True
+
+
+    - debug:
+         var: mysql_run_sh_result
+ 
+    - name: change mysql_run_sh_result--转换变量
+      set_fact: sh_result_change="{{ mysql_run_sh_result.stdout.split(',') }}"
+      ignore_errors: True
+      when: mysql_run_sh_result.stdout.find(',') != -1
+
+    - name:  wich_item_result_change_print 使用转换后的变量遍历数据
+      debug:
+        msg: "{{ item }}"
+      with_items:
+        - "{{ sh_result_change }}"
+      when: sh_result_change is defined
+    - name: print 非转换的单一结果
+      debug:
+        msg: “{{ mysql_run_sh_result.stdout }}”
+      when: sh_result_change is undefined
+
+#   - name: change string--转换变量
+#     set_fact: result_change=[]
+
+    - name:  mysql_select_all_无参数化查询
+      shell: mysql -u {{ db_user }} --password={{ db_password }} -h {{ db_server }} -N</root/mysql_tmp/select_table.sql
       #  chdir: /root/mysql_tmp
-      delegate_to: 192.168.11.165
+      delegate_to: "{{ db_server }}"
       register: mysql_result
       run_once: true
       ignore_errors: True
+
     - debug:
        # msg: "{{ mysql_result.stdout_lines }}"
          var: mysql_result.stdout
-    - name:   shell print
+
+    - name:   shell-command print
       command: echo {{ mysql_result.stdout_lines }}
       register: mysql_result_shell
+
     - debug:
        # msg: "{{ mysql_result.stdout_lines }}"
          var: mysql_result_shell
+
 #   - name:   for print more results
 #      debug:
 #        msg="{% for i in {{ mysql_result.results }} %} {{ i.stdout }} {% endfor %}"
 
-    - name: change string--转换变量
+    - name: change more_result,change_string--转换变量
       set_fact: result_change="{{ mysql_result.stdout.split(',') }}"
+      when: mysql_result.stdout.find(',') != -1
+
 
     - name:  wich_item_result_change_print 使用转换后的变量遍历数据
       debug:
         msg: "{{ item }}"
       with_items:
         - "{{ result_change }}"
+      when: result_change is defined 
 
-
-
-    - name:  wich_item_stdout_print
+    - name: print 非转换的单一结果
       debug:
-        msg: "{{ item }}"
-      with_items:
-        - "{{ mysql_result.stdout }}"
+        msg: “{{ mysql_result.stdout }}”
+      when: result_change is undefined
 
-
-    - name:  wich_item_stdout_lines_print
-      debug:
-        msg: "{{ item }}"
-      with_items:
-        - "{{ mysql_result.stdout_lines }}"
 
     - name: change result_lines_string--转换变量
       set_fact: result_lines_change="{{ ",".join(mysql_result.stdout_lines) }}"

@@ -1,0 +1,6 @@
+#!/bin/bash
+mysql -u {{ db_user }}  --password={{ db_password }} -h {{ db_server }} -N<<EOF
+use bocdb;
+select group_concat(TXNCODE_ID) from FLT_TXNCODE where TXNCODE_ID={{ tran_code }};
+EOF
+exit
