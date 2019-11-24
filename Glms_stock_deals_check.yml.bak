@@ -27,7 +27,7 @@
 
    - name: "db_password"
      prompt: "请输入数据库密码："
-     private: no
+     private: yes
 #    encrypt: "sha512_crypt"
      confirm: yes
 #-------------------------------------------------------定义变量--------------------------------------------------------#
@@ -439,18 +439,23 @@
       register: date_time_range
     - debug:
         msg: "{{ date_time_range.stdout_lines }}"
+      run_once: true
+      delegate_to: localhost 
     
     - name: 搜索联机交易日志
       shell:
-        "grep {{ item }} {{ logdir }}/{{ ansible_hostname | lower }}_as_biz.log"
+        "grep {{ item | quote }} {{ logdir }}/{{ ansible_hostname | lower }}_as_biz.log | cat "
+      register: glms_sts_log_result
+      check_mode: no
       with_items: 
           - "{{ date_time_range.stdout_lines }}"
-      register: glms_sts_log_result
       ignore_errors: True 
 
     - name: 输出 {{ glms_dt }} 账号是:{{ account_no }}  额度号是:{{ get_account_flno }}的通过IPS系统外调STS系统交易日志
       debug:
         msg: "{{ item.stdout_lines }}"
+ #      msg: "{{ item.rc }}"
+      when: item.stdout != ""
       with_items:
           - "{{ glms_sts_log_result.results }}" 
  
