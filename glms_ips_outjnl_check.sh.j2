@@ -1,0 +1,6 @@
+#!/bin/bash
+mysql -u {{ db_user }}  --password={{ db_password }} -h {{ db_server }} -N<<EOF
+use bocdb;
+select group_concat(OUTJNL_CHGDT),group_concat(OUTINL_CHGLCTM),group_concat(OUTJNL_TXNRTNID)  from FLT_OUTJNL  where OUTJNL_BNKNO="{{ flag_bnkno }}" and  OUTJNL_DESTTXNID="{{ outjnlid }}" and OUTJINL_BUSINO like "%{{ get_account_flno }}%" order by OUTJNL_TXNDT DESC;
+EOF
+exit

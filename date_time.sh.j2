@@ -1,0 +1,7 @@
+year={{ glms_ips_date }}|cut -b 1-4
+mon={{ glms_ips_date }}|cut -b 5-6
+day={{ glms_ips_date }}|cut -b 7-8
+hh={{ glms_ips_time }}|cut -b 1-2
+ss={{ glms_ips_time }}|cut -b 3-4
+mm={{ glms_ips_time }}|cut -b 5-6 
+echo ${year}-${mon}-${day} ${hh}:${ss}:${mm}

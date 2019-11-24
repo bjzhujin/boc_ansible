@@ -1,6 +1,6 @@
 #!/bin/bash
 mysql -u {{ db_user }}  --password={{ db_password }} -h {{ db_server }} -N<<EOF
 use bocdb;
-select group_concat(TXNCODE_CHNDESC) from FLT_TXNCODE where TXNCODE_ID="{{ tran_code }}";
+select group_concat(FLAG_VALUE) from FLT_FLAG  where FLAG_BNKNO="{{ flag_bnkno }}";
 EOF
 exit

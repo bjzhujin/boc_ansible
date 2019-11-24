@@ -1,6 +1,6 @@
 #!/bin/bash
 mysql -u {{ db_user }}  --password={{ db_password }} -h {{ db_server }} -N<<EOF
 use bocdb;
-select group_concat(FLACC_ACCNO) from FLT_FLACC  where FLACC_ACCNO={{ account_no }};
+select group_concat(FLACC_FLNO) from FLT_FLACC  where FLACC_ACCNO="{{ account_no }}";
 EOF
 exit

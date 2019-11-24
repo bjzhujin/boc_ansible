@@ -1,0 +1,50 @@
+---
+  - block:
+    - name: 提取队列管理器名称
+      set_fact: get_queue_manager="{{ queue_curdepth_item.stdout | regex_findall('queue manager.*\\.') }}"
+    - set_fact: queue_manager="{{ ",".join(get_queue_manager) }}"
+
+    - name: 提取队列深度
+      set_fact: get_queue_curdepth="{{ get_queue_curdepth }} + {{ queue_curdepth_item.stdout | regex_findall('CURDEPTH\\((.*)\\)') }}"
+
+    - name: 转换队列深度列表元素数值类型(string-->int) 
+      set_fact: get_queue_curdepth_number="{{ get_queue_curdepth | map('int') | list }}"
+
+    - name: 提取MQ队列深度最大值 
+      set_fact: get_queue_curdepth_max="{{ get_queue_curdepth_number | max }}"
+
+    - name: 获得主机hostname
+      shell: hostname
+      register: task_host_name
+
+    - shell: date "+%Y-%m-%d %T"
+      register: date_result
+
+    - name: 执行检查 
+      shell:
+        "{% if get_queue_curdepth_max >= queue_curdepth_max %}
+           echo {{ date_result.stdout ~ ' ' ~ task_host_name.stdout ~ ' 主机:' ~ queue_manager ~ '队列深度最大值为' ~ get_queue_curdepth_max ~ '[阈
+值:' ~  queue_curdepth_max  ~ '],存在异常!'  | quote }}
+        {% else %}
+          echo {{ date_result.stdout ~ ' ' ~ task_host_name.stdout ~ ' 主机: ' ~ queue_manager ~ '队列深度正常!' | quote }}
+        {% endif %}"
+      register: mqm_queue_curdepth_check_result
+
+#   - name: 打印get_queue_curdepth 队列深度
+#     debug:
+#       msg: "{{ item }}"
+#     with_items:
+#      - "{{ get_queue_curdepth_number }}"
+
+    - name: 打印MQ队列最大深度值
+      debug:
+        msg: "{{ item }}"
+      with_items:
+       - "{{ get_queue_curdepth_max }}"
+
+    - name: 显示队列检查结果
+      debug:
+        msg: "{{ item.stdout }}"
+      with_items:
+       - "{{ mqm_queue_curdepth_check_result }}"
+    when: true

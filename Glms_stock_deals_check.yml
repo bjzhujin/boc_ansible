@@ -4,8 +4,13 @@
  - hosts: online_server
 #------------------------------------------输入核心系统提供的交易码、账号、交易返回码信息--------------------------------#
    vars_prompt:
+
+   - name: "bocs_err_code"
+     prompt: "请输入核心系统报错码："
+     private: no
+
    - name: "tran_code"
-     prompt: "请输入交易码："
+     prompt: "请输入额度交易码："
      private: no
 
    - name: "account_no"
@@ -29,32 +34,48 @@
    vars:
     select_fact_var: "where student_id = 100;"
     app_dir: "mysql_tmp"
-    mysql_tran_code_check_sh_name: "tran_code_check.sh"                                #交易码查询脚本名称    #
-    mysql_account_no_check_sh_name: "account_no_check.sh"                              #账号查询脚本名称      #
-    mysql_retun_code_check_sh_name: "retun_code_check.sh"                              #交易返回码查询脚本名称#
-    mysql_sh_name: "mysql_run.sh"
-#   db_user: "boc"                                                                     #数据库用户            # 
-#   db_password: "BOChq999"                                                            #数据库密码            #
+    mysql_bocs_err_code_check_sh_name: "bocs_err_code_check.sh"                        #核心系统报错码查询脚本名称      #
+    mysql_tran_code_check_sh_name: "tran_code_check.sh"                                #交易码查询脚本名称              #
+    mysql_account_no_check_sh_name: "account_no_check.sh"                              #账号查询脚本名称                #
+    mysql_glms_ips_outjnl_check_sh_name: "glms_ips_outjnl_check.sh"                    #GLMS通过IPS外调交易查询脚本名称 #
+    mysql_retun_code_check_sh_name: "retun_code_check.sh"                              #交易返回码查询脚本名称          #
+    mysql_sts_check_sh_name: "sts_flag_check.sh"                                       #STS系统外调标识检查脚本名称     #
+    glms_date_time_name: "glms_date_time.sh"                                           #                                #
+    glms_date_time_change_name: "glms_date_time_change.sh"                             #python交易时间区间程序          #
+    response_time: "30"                                                                  #交易响应时间(秒)                #
+    flag_bnkno: "138"                                                                  #澳门行号                        #
+    outjnlid: "141080"                                                                 #STS系统交易码                   # 
+    mysql_sh_name: "mysql_run.sh"                                                      #测试脚本                        #
+#   db_user: "boc"                                                                     #数据库用户                      # 
+#   db_password: "BOChq999"                                                            #数据库密码                      #
     db_server: "{%- for host in groups['db_server'] -%} {{ host }} {%- endfor -%}"
     mqm_name_tmp_list: []
     get_channel_status: []
+    get_queue_curdepth: []
     mq_channel_run_status: ["RUNNING"]
-
+    list1: ['1','2','3']
+    queue_curdepth_max: 100
+    glms_ips_ok: "0000" 
 #***********************************************开始分布式并行任务****************************************************************#
    tasks:
-    - name: delete tran_code 中的空格--转换变量
+    - name: 去除 {{ bocs_err_code }} 中的空格
+      set_fact: bocs_err_code="{{ bocs_err_code.replace(' ','') }}"
+      run_once: true
+      delegate_to: localhost
+    - name: 去除 {{ tran_code }} 中的空格
       set_fact: tran_code="{{ tran_code.replace(' ','') }}"
       run_once: true
       delegate_to: localhost
-    - name: delete account_no 中的空格--转换变量
+    - name: 去除 {{ account_no }} 中的空格
       set_fact: account_no="{{ account_no.replace(' ','') }}"
       run_once: true
       delegate_to: localhost
-    - name: delete retun_code 中的空格--转换变量
+    - name: 去除 {{ retun_code }} 中的空格
       set_fact: retun_code="{{ retun_code.replace(' ','') }}"
       run_once: true
       delegate_to: localhost
 
+#   - debug:
 #   - debug:
 #      msg: "{{ item | length }}"
 #     with_items:
@@ -74,22 +95,25 @@
 
     - block:
   
-      - name: copy_mysql_select_facts_参数化查询
+      - name: 客户化参数查询脚本(交易码、账号、交易返回码)
         template:
            src: "{{ item }}"
            dest: "{{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }}/{{ item.replace('.j2','') }}"
            mode: 0755
         with_items:
+         - "{{ mysql_bocs_err_code_check_sh_name }}.j2"
          - "{{ mysql_tran_code_check_sh_name }}.j2"
          - "{{ mysql_account_no_check_sh_name }}.j2"
          - "{{ mysql_retun_code_check_sh_name }}.j2" 
 
       always:
       - debug: msg="数据库查询脚本执行中，请等待！"
-      - name: mysql_run.sh----running执行数据库表查询
+
+      - name: 执行参数查询脚本((交易码、账号、交易返回码)
         shell: "chdir={{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }} removes={{ item }} {{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }}/{{ item }}"
         register: mysql_run_sh_results
         with_items:
+         - "{{ mysql_bocs_err_code_check_sh_name }}"
          - "{{ mysql_tran_code_check_sh_name }}"
          - "{{ mysql_account_no_check_sh_name }}"
          - "{{ mysql_retun_code_check_sh_name }}"
@@ -97,20 +121,20 @@
       rescue:
       - debug: msg="数据库查询脚本出错，请检查！"
 
-      when:  tran_code | length  != 0 or  account_no | length  != 0 or  retun_code | length  != 0
+      when:  bocs_err_code | length != 0 or tran_code | length  != 0 or  account_no | length  != 0 or  retun_code | length  != 0
       run_once: true
       delegate_to: "{{ db_server }}"
       ignore_errors: True
 #1.1-----------------------------------------块操作end-------------------------------------------------------------------------------#
 
-    - debug:
+#   - debug:
 #        msg: "{{ item.stdout }}"
-         msg: "{{ item.item }}----->{{ item.stdout }}"
-      with_items:
-         - "{{ mysql_run_sh_results.results }}"
-      run_once: true
-      delegate_to: localhost
-      ignore_errors: True
+#        msg: "{{ item.item }}----->{{ item.stdout }}"
+#     with_items:
+#        - "{{ mysql_run_sh_results.results }}"
+#     run_once: true
+#     delegate_to: localhost
+#     ignore_errors: True
 
     - name: change mysql-run-sh-results--转换变量
       set_fact: "{{ item.item.replace('.sh','') }} = {{ item.stdout.split(',') }}"
@@ -127,6 +151,7 @@
       when: "{{ item }} is defined"
     # when: defined({{ item }})
       with_items:
+         - "{{ mysql_bocs_err_code_check_sh_name.replace('.sh','') }}"
          - "{{ mysql_tran_code_check_sh_name.replace('.sh','') }}"
          - "{{ mysql_account_no_check_sh_name.replace('.sh','') }}"
          - "{{ mysql_retun_code_check_sh_name.replace('.sh','') }}"
@@ -142,6 +167,7 @@
       when: "{{ item }} is undefined"
    #  when: undefined({{ item }})
       with_items:
+         - "{{ mysql_bocs_err_code_check_sh_name.replace('.sh','') }}"
          - "{{ mysql_tran_code_check_sh_name.replace('.sh','') }}"
          - "{{ mysql_account_no_check_sh_name.replace('.sh','') }}"
          - "{{ mysql_retun_code_check_sh_name.replace('.sh','') }}"
@@ -149,9 +175,64 @@
       delegate_to: localhost
       ignore_errors: True
 
-#1======================以上数据库查询脚本目的是检查核心系统提供的信息是否真实有效=====================#
+#1=========================以上数据库查询脚本目的是检查核心系统提供的信息是否真实有效=======================#
 
-#2========================================start检查MQ是否正常===============================================#
+
+#2========================================数据库查询：确认澳门STS系统是否正常运行===========================#
+    - block:
+      - name: 客户化澳门STS系统外调交易标识参数查询脚本
+        template:
+           src:  "{{ mysql_sts_check_sh_name }}.j2"
+           dest: "{{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }}/{{ mysql_sts_check_sh_name }}"
+           mode: 0755
+
+      - name: 执行澳门STS系统外调交易标识参数查询脚本
+        shell: "chdir={{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }} removes={{ mysql_sts_check_sh_name }} {{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }}/{{ mysql_sts_check_sh_name }}"
+        register: sts_check_result
+
+      always:
+      - debug: msg="数据库查询脚本执行中，请等待！"
+
+      rescue:
+      - debug: msg="数据库查询脚本出错，请检查！"
+
+      - debug:
+           var: sts_check_result.stdout
+      when: True
+      run_once: true
+      delegate_to: "{{ db_server }}"
+      ignore_errors: True
+
+    - name: 检查外调交易标识
+      shell:
+        "{% if sts_check_result.stdout == 'N' %}
+            echo {{ '澳门STS系统外调交易标识为' ~ sts_check_result.stdout ~ ',股票休市状态!' | quote }}
+        {% elif sts_check_result.stdout == 'E' %}
+           echo {{ '澳门STS系统外调交易标识为' ~ sts_check_result.stdout ~ ',澳门STS系统异常状态!' | quote }} 
+        {% else %}
+           echo {{ '澳门STS系统外调交易标识为' ~ sts_check_result.stdout ~ ',允许外调澳门STS系统!' | quote }}
+        {% endif %}"
+      register: sts_flag_check_result
+      run_once: true
+#     delegate_to: "{{ db_server }}"
+      delegate_to: localhost 
+      ignore_errors: True
+
+    - debug:
+         var: sts_flag_check_result.stdout
+      run_once: true
+#     delegate_to: "{{ db_server }}"
+      delegate_to: localhost
+      ignore_errors: True
+
+#2=========================================end确认澳门STS系统是否正常运行===================================#
+
+
+
+
+
+
+#3========================================start检查MQ是否正常===============================================#
 
     - name: 提取MQ队列管理器名称
       shell: dspmq
@@ -165,6 +246,7 @@
 
     - debug:
         msg: "{{ item | regex_findall('\\((.*)\\)\\s+') }}"
+
       when: item.find('Running') != -1 
       with_items:
        - "{{ mqm_name_result.stdout_lines }}"
@@ -203,8 +285,186 @@
       loop_control:
         loop_var: channel_status_item
 
-#2=========================================end检查MQ是否正常===============================================#
+    - name: 检查MQ队列深度
+      shell: echo "dis QUEUE(*) CURDEPTH"|runmqsc {{ item }}
+      register: mqm_QUEUE_CURDEPTH_check_result
+      become: yes
+      become_method: su
+      become_user: mqm
+      with_items:
+       - "{{ mqm_name_tmp_list }}"
+       
+#   - debug:
+#       msg: "{{ item.stdout_lines }}"
+#       verbosity: 0
+#     with_items:
+#      - "{{ mqm_QUEUE_CURDEPTH_check_result.results }}"
 
+    - name: 判断MQ队列深度是否正常
+      include_tasks: mq_queue_curdepth_check.yml
+      with_items:
+       - "{{ mqm_QUEUE_CURDEPTH_check_result.results }}"
+      loop_control:
+        loop_var: queue_curdepth_item 
+
+
+#3=================================================end检查MQ是否正常===============================================#
+
+
+#4==============================================start在外调日志表中检查外调STS系统的交易日志==============================#
+
+    - name: 取得 核心系统交易账号{{ account_no }}的额度号
+      set_fact: get_account_flno="{%- for sub_check_result in mysql_run_sh_results.results -%} {%- if sub_check_result.item | match(item) -%}  {{ sub_check_result.stdout }} {%- endif -%} {%- endfor -%}"
+      when: "{{ item }} is undefined"
+      with_items:
+         - "{{ mysql_account_no_check_sh_name.replace('.sh','') }}"
+      run_once: true
+      delegate_to: localhost
+      ignore_errors: True
+    
+    - debug: 
+         var: get_account_flno
+      run_once: true
+      delegate_to: localhost
+      ignore_errors: True
+
+
+    - block:
+
+      - name: 客户化参数查询脚本(外调日志表中查询外调STS系统的日志)
+        template:
+           src: "{{ item }}"
+           dest: "{{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }}/{{ item.replace('.j2','') }}"
+           mode: 0755
+        with_items:
+         - "{{ mysql_glms_ips_outjnl_check_sh_name }}.j2"
+
+      always:
+      - debug: msg="数据库查询脚本执行中，请等待！"
+
+      - name: 执行参数查询脚本(外调日志表中查询外调STS系统的日志)
+        shell: "chdir={{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }} removes={{ item }} {{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }}/{{ item }}"
+        register: glms_ips_outjnl_result
+        with_items:
+         - "{{ mysql_glms_ips_outjnl_check_sh_name }}"
+
+      rescue:
+      - debug: msg="数据库查询脚本出错，请检查！"
+
+      when:  get_account_flno | length  != 0
+      run_once: true
+      delegate_to: "{{ db_server }}"
+      ignore_errors: True
+
+    - name: 打印通过IPS系统的外调交易查询结果
+      debug:
+         msg: "{{ item.stdout }}"
+      with_items:
+        - "{{ glms_ips_outjnl_result.results }}" 
+      run_once: true
+      delegate_to: localhost
+
+    - name: 转换变量   glms_ips_outjnl_result.results.stdout  为列表类型
+      set_fact: result_change_list="{{ item.stdout.split('\t') }}"
+      when: item.stdout.find('\t') != -1
+      with_items:
+        - "{{ glms_ips_outjnl_result.results }}"
+      run_once: true
+      delegate_to: localhost
+
+    - name: 打印转换变量  {{ result_change_list }} 的列表值
+      debug: 
+         msg: "{{ result_change_list }}"
+      run_once: true
+      delegate_to: localhost
+
+    - name: 提取时间，IPS系统交易返回码
+      set_fact: glms_ips_date="{%- for subitem in result_change_list -%} {%- if loop.first -%} {{ subitem }} {%- endif -%}  {%- endfor -%}"
+    - set_fact: glms_ips_time="{%- for subitem in result_change_list -%} {%- if loop.index == 2 -%} {{ subitem }} {%- endif -%}  {%- endfor -%}"
+    - set_fact: glms_ips_rnid="{%- for subitem in result_change_list -%} {%- if loop.last  -%} {{ subitem }} {%- endif -%}  {%- endfor -%}"
+
+    - name: 判断通过IPS系统外调STS系统是否正常
+      shell:
+        "{% if glms_ips_rnid  != glms_ips_ok %}
+           echo {{ 'GLMS系统外调交易IPS返回码：[' ~ glms_ips_rnid ~ '],STS返回超时,存在异常!'  | quote }}
+        {% else %}
+           echo {{ 'GLMS系统外调交易IPS返回码：[' ~ glms_ips_rnid ~ '],通过IPS系统外调STS交易返回正常!'  | quote }}
+        {% endif %}"
+      register: glms_ips_back_check_result
+
+    - name: 打印判断结果
+      debug:
+         msg: "{{ glms_ips_back_check_result.stdout }}"
+
+    
+    - name: 获取交易时间组合脚本
+      template:
+           src:  "{{ glms_date_time_name }}.j2"
+           dest: "{{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }}/{{ glms_date_time_name }}"
+           mode: 0755
+      delegate_to: "{{ db_server }}"
+      run_once: true
+
+    - name: 执行交易时间组合脚本
+      shell: "chdir={{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }} removes={{ glms_date_time_name }} {{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }}/{{ glms_date_time_name }}"
+      delegate_to: "{{ db_server }}"
+      run_once: true
+      register: date_time
+
+    - name: 打印变量  {{ glms_ips_date }} {{ glms_ips_time }} {{ glms_ips_rnid }} {{ date_time }} 的值
+      debug:
+         msg: "{{ item }}"
+      with_items:
+        - "{{ glms_ips_date }}"
+        - "{{ glms_ips_time }}"
+        - "{{ glms_ips_rnid }}"
+        - "{{ date_time }}"
+      run_once: true
+      delegate_to: localhost
+
+    - set_fact: glms_dt="{{ date_time.stdout }}"
+
+    - name: 客户化获取交易时间区间程序{{ glms_date_time_change_name }}
+      template:
+           src:  "{{ glms_date_time_change_name }}.j2"
+           dest: "{{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }}/{{ glms_date_time_change_name }}"
+           mode: 0755
+      delegate_to: "{{ db_server }}"
+      run_once: true 
+
+    - name: 执行{{ glms_date_time_change_name }},获取交易时间区间
+      shell: "chdir={{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }} removes={{ glms_date_time_change_name }} {{ ansible_user_dir }}/{{ ansible_hostname }}/{{ app_dir }}/{{ glms_date_time_change_name }}"
+      delegate_to: "{{ db_server }}"
+      run_once: true
+      register: date_time_range
+    - debug:
+        msg: "{{ date_time_range.stdout_lines }}"
+    
+    - name: 搜索联机交易日志
+      shell:
+        "grep {{ item }} {{ logdir }}/{{ ansible_hostname | lower }}_as_biz.log"
+      with_items: 
+          - "{{ date_time_range.stdout_lines }}"
+      register: glms_sts_log_result
+      ignore_errors: True 
+
+    - name: 输出 {{ glms_dt }} 账号是:{{ account_no }}  额度号是:{{ get_account_flno }}的通过IPS系统外调STS系统交易日志
+      debug:
+        msg: "{{ item.stdout_lines }}"
+      with_items:
+          - "{{ glms_sts_log_result.results }}" 
+ 
+
+#4==============================================end在外调日志表中检查外调STS系统的交易日志================================#
+
+#5==============================================start在交易日志log中提取外调STS系统详细交易日志============================#
+
+
+
+
+
+
+#5===============================================end在交易日志log中提取外调STS系统详细交易日志=============================#
 
 #   - name: change string--转换变量
 #     set_fact: result_change=[]
@@ -259,3 +519,4 @@
         msg: "{%- for sub_item in item -%} {{ sub_item }} {%- endfor -%}"
       with_items: 
           - "{{ result_lines_change.split(',') }}"
+#-----------------------------------------------------------playbook:----------------------------------------------------#
