@@ -47,4 +47,13 @@
         msg: "{{ item.stdout }}"
       with_items:
        - "{{ mqm_CHANNEL_status_check_result }}"
+
+    - name: 写入检查报告
+      shell:
+        "echo {{ ansible_date_time.date ~ ' ' ~ ansible_date_time.time ~ ' ' ~ mqm_CHANNEL_status_check_result.stdout | quote }} >> {{ report_dir }}/{{ report_name }}"
+      run_once: true
+      delegate_to: localhost
+      ignore_errors: True
+
+      
     when: true

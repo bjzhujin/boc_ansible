@@ -34,6 +34,8 @@
    vars:
     select_fact_var: "where student_id = 100;"
     app_dir: "mysql_tmp"
+    report_dir: "/root/glms_rpt"
+    report_name: "GLMS_check.log"
     mysql_bocs_err_code_check_sh_name: "bocs_err_code_check.sh"                        #核心系统报错码查询脚本名称      #
     mysql_tran_code_check_sh_name: "tran_code_check.sh"                                #交易码查询脚本名称              #
     mysql_account_no_check_sh_name: "account_no_check.sh"                              #账号查询脚本名称                #
@@ -75,13 +77,6 @@
       run_once: true
       delegate_to: localhost
 
-#   - debug:
-#   - debug:
-#      msg: "{{ item | length }}"
-#     with_items:
-#      - "{{ tran_code }}"
-#      - "{{ account_no }}"
-#      - "{{ retun_code }}"
 
 #1=======================================以下数据库查询任务目的是检查核心系统提供的信息是否真实、有效=================================#
     - name: check shell dir
@@ -127,14 +122,6 @@
       ignore_errors: True
 #1.1-----------------------------------------块操作end-------------------------------------------------------------------------------#
 
-#   - debug:
-#        msg: "{{ item.stdout }}"
-#        msg: "{{ item.item }}----->{{ item.stdout }}"
-#     with_items:
-#        - "{{ mysql_run_sh_results.results }}"
-#     run_once: true
-#     delegate_to: localhost
-#     ignore_errors: True
 
     - name: change mysql-run-sh-results--转换变量
       set_fact: "{{ item.item.replace('.sh','') }} = {{ item.stdout.split(',') }}"
@@ -149,7 +136,6 @@
       debug:
         msg: "{%- for sub_item in item -%} {{ sub_item }} {%- endfor -%}"
       when: "{{ item }} is defined"
-    # when: defined({{ item }})
       with_items:
          - "{{ mysql_bocs_err_code_check_sh_name.replace('.sh','') }}"
          - "{{ mysql_tran_code_check_sh_name.replace('.sh','') }}"
@@ -161,9 +147,32 @@
 
     - name: print 打印非转换的单一结果变量
       debug:
-    #   msg: “{{ item }}”
-    #   msg: "{% for sub_check_result in mysql_run_sh_results.results %} {{ sub_check_result.item | match({{ item }}) }} {% endfor %}" 
         msg: "{%- for sub_check_result in mysql_run_sh_results.results -%} {%- if sub_check_result.item | match(item) -%}  {{ sub_check_result.stdout }} {%- endif -%} {%- endfor -%}" 
+      when: "{{ item }} is undefined"
+   #  when: undefined({{ item }})
+      with_items:
+         - "{{ mysql_bocs_err_code_check_sh_name.replace('.sh','') }}"
+         - "{{ mysql_tran_code_check_sh_name.replace('.sh','') }}"
+         - "{{ mysql_account_no_check_sh_name.replace('.sh','') }}"
+         - "{{ mysql_retun_code_check_sh_name.replace('.sh','') }}"
+      run_once: true
+      delegate_to: localhost
+      ignore_errors: True
+    - name: 写入检查报告 
+      shell:
+        "echo {{'                             ' ~ '额度系统澳门股票交易检查报告' | quote  }} > {{ report_dir }}/{{ report_name }}"
+      run_once: true
+      delegate_to: localhost
+      ignore_errors: True
+
+    - name: 写入检查报告
+      shell:
+        "{%- for sub_check_result in mysql_run_sh_results.results -%} 
+        {%- if sub_check_result.item | match(item) -%}
+        echo {{ ansible_date_time.date ~ ' ' ~ ansible_date_time.time ~ ' ' ~ item.replace('_check','') ~ ':'
+         ~ sub_check_result.stdout | quote }} >> {{ report_dir }}/{{ report_name }} 
+        {%- endif -%} 
+        {%- endfor -%}"
       when: "{{ item }} is undefined"
    #  when: undefined({{ item }})
       with_items:
@@ -214,16 +223,21 @@
         {% endif %}"
       register: sts_flag_check_result
       run_once: true
-#     delegate_to: "{{ db_server }}"
       delegate_to: localhost 
       ignore_errors: True
 
     - debug:
          var: sts_flag_check_result.stdout
       run_once: true
-#     delegate_to: "{{ db_server }}"
       delegate_to: localhost
       ignore_errors: True
+    - name: 写入检查报告
+      shell:
+        "echo {{ ansible_date_time.date ~ ' ' ~ ansible_date_time.time ~ ' ' ~ sts_flag_check_result.stdout | quote }} >> {{ report_dir }}/{{ report_name }}"
+      run_once: true
+      delegate_to: localhost
+      ignore_errors: True 
+        
 
 #2=========================================end确认澳门STS系统是否正常运行===================================#
 
@@ -294,11 +308,6 @@
       with_items:
        - "{{ mqm_name_tmp_list }}"
        
-#   - debug:
-#       msg: "{{ item.stdout_lines }}"
-#       verbosity: 0
-#     with_items:
-#      - "{{ mqm_QUEUE_CURDEPTH_check_result.results }}"
 
     - name: 判断MQ队列深度是否正常
       include_tasks: mq_queue_curdepth_check.yml
@@ -308,7 +317,7 @@
         loop_var: queue_curdepth_item 
 
 
-#3=================================================end检查MQ是否正常===============================================#
+#3=======================================================end检查MQ是否正常===============================================#
 
 
 #4==============================================start在外调日志表中检查外调STS系统的交易日志==============================#
@@ -328,7 +337,7 @@
       delegate_to: localhost
       ignore_errors: True
 
-
+#----------------------------------------------start block-----------------------------------------------#                   
     - block:
 
       - name: 客户化参数查询脚本(外调日志表中查询外调STS系统的日志)
@@ -355,46 +364,60 @@
       run_once: true
       delegate_to: "{{ db_server }}"
       ignore_errors: True
+#----------------------------------------------------------end block-------------------------------------------#
 
-    - name: 打印通过IPS系统的外调交易查询结果
-      debug:
-         msg: "{{ item.stdout }}"
-      with_items:
-        - "{{ glms_ips_outjnl_result.results }}" 
+#----------------------------------------------------------start block-----------------------------------------#
+    - block:
+      - name: 打印通过IPS系统的外调交易查询结果
+        debug:
+          msg: "{{ item.stdout }}"
+        with_items:
+          - "{{ glms_ips_outjnl_result.results }}" 
+
+      - name: 转换变量   glms_ips_outjnl_result.results.stdout  为列表类型
+        set_fact: result_change_list="{{ item.stdout.split('\t') }}"
+        when: item.stdout.find('\t') != -1
+        with_items:
+          - "{{ glms_ips_outjnl_result.results }}"
+
+      - name: 打印转换变量  {{ result_change_list }} 的列表值
+        debug: 
+          msg: "{{ result_change_list }}"
+
+      - name: 提取时间，IPS系统交易返回码
+        set_fact: glms_ips_date="{%- for subitem in result_change_list -%} {%- if loop.first -%} {{ subitem }} {%- endif -%}  {%- endfor -%}"
+
+      - set_fact: glms_ips_time="{%- for subitem in result_change_list -%} {%- if loop.index == 2 -%} {{ subitem }} {%- endif -%}  {%- endfor -%}"
+
+      - set_fact: glms_ips_rnid="{%- for subitem in result_change_list -%} {%- if loop.last  -%} {{ subitem }} {%- endif -%}  {%- endfor -%}"
+
+
+      - name: 判断通过IPS系统外调STS系统是否正常
+        shell:
+          "{% if glms_ips_rnid  != glms_ips_ok %}
+          echo {{ 'GLMS系统外调交易IPS返回码：[' ~ glms_ips_rnid ~ '],STS返回超时,存在异常!'  | quote }}
+          {% else %}
+          echo {{ 'GLMS系统外调交易IPS返回码：[' ~ glms_ips_rnid ~ '],通过IPS系统外调STS交易返回正常!'  | quote }}
+          {% endif %}"
+        register: glms_ips_back_check_result
+
+
+      - name: 打印判断结果
+        debug:
+          msg: "{{ glms_ips_back_check_result.stdout }}"
+
+      - name: 写入检查报告 
+        shell:
+         "echo {{ ansible_date_time.date ~ ' ' ~ ansible_date_time.time ~ ' ' ~  glms_ips_back_check_result.stdout | quote }} >> {{ report_dir }}/{{ report_name }}" 
+      when:  get_account_flno | length  != 0
       run_once: true
       delegate_to: localhost
+      ignore_errors: True
+#-----------------------------------------------end block-----------------------------------------------------------------#
 
-    - name: 转换变量   glms_ips_outjnl_result.results.stdout  为列表类型
-      set_fact: result_change_list="{{ item.stdout.split('\t') }}"
-      when: item.stdout.find('\t') != -1
-      with_items:
-        - "{{ glms_ips_outjnl_result.results }}"
-      run_once: true
-      delegate_to: localhost
+#4==============================================end在外调日志表中检查外调STS系统的交易日志================================#
 
-    - name: 打印转换变量  {{ result_change_list }} 的列表值
-      debug: 
-         msg: "{{ result_change_list }}"
-      run_once: true
-      delegate_to: localhost
-
-    - name: 提取时间，IPS系统交易返回码
-      set_fact: glms_ips_date="{%- for subitem in result_change_list -%} {%- if loop.first -%} {{ subitem }} {%- endif -%}  {%- endfor -%}"
-    - set_fact: glms_ips_time="{%- for subitem in result_change_list -%} {%- if loop.index == 2 -%} {{ subitem }} {%- endif -%}  {%- endfor -%}"
-    - set_fact: glms_ips_rnid="{%- for subitem in result_change_list -%} {%- if loop.last  -%} {{ subitem }} {%- endif -%}  {%- endfor -%}"
-
-    - name: 判断通过IPS系统外调STS系统是否正常
-      shell:
-        "{% if glms_ips_rnid  != glms_ips_ok %}
-           echo {{ 'GLMS系统外调交易IPS返回码：[' ~ glms_ips_rnid ~ '],STS返回超时,存在异常!'  | quote }}
-        {% else %}
-           echo {{ 'GLMS系统外调交易IPS返回码：[' ~ glms_ips_rnid ~ '],通过IPS系统外调STS交易返回正常!'  | quote }}
-        {% endif %}"
-      register: glms_ips_back_check_result
-
-    - name: 打印判断结果
-      debug:
-         msg: "{{ glms_ips_back_check_result.stdout }}"
+#5==============================================start在交易日志log中提取外调STS系统详细交易日志============================#
 
     
     - name: 获取交易时间组合脚本
@@ -437,38 +460,39 @@
       delegate_to: "{{ db_server }}"
       run_once: true
       register: date_time_range
-    - debug:
-        msg: "{{ date_time_range.stdout_lines }}"
-      run_once: true
-      delegate_to: localhost 
+
+#   - debug:
+#       msg: "{{ date_time_range.stdout_lines }}"
+#     run_once: true
+#     delegate_to: localhost 
     
     - name: 搜索联机交易日志
       shell:
         "grep {{ item | quote }} {{ logdir }}/{{ ansible_hostname | lower }}_as_biz.log | cat "
       register: glms_sts_log_result
-      check_mode: no
       with_items: 
           - "{{ date_time_range.stdout_lines }}"
       ignore_errors: True 
 
     - name: 输出 {{ glms_dt }} 账号是:{{ account_no }}  额度号是:{{ get_account_flno }}的通过IPS系统外调STS系统交易日志
       debug:
-        msg: "{{ item.stdout_lines }}"
- #      msg: "{{ item.rc }}"
-      when: item.stdout != ""
+        msg: "{{ item.cmd }} 
+             {{ item.stdout_lines }}"
+      when:  item.stdout.encode() != ""
       with_items:
-          - "{{ glms_sts_log_result.results }}" 
+          - "{{ glms_sts_log_result.results }}"
+
+    - name: 写入检查报告
+      blockinfile:
+           path: "{{ report_dir }}/{{ report_name }}"
+           block: "{{ ansible_date_time.date ~ ' ' ~ ansible_date_time.time  ~ ' ' ~  item.cmd.replace('| cat','\n') ~ '\n' ~  item.stdout }}"
+           marker: "#{mark} 检索到的{{ item.cmd.replace('| cat','') }}交易日志\n"
+      when:  item.stdout.encode() != ""
+      with_items:
+          - "{{ glms_sts_log_result.results }}"
+      delegate_to: localhost 
+
  
-
-#4==============================================end在外调日志表中检查外调STS系统的交易日志================================#
-
-#5==============================================start在交易日志log中提取外调STS系统详细交易日志============================#
-
-
-
-
-
-
 #5===============================================end在交易日志log中提取外调STS系统详细交易日志=============================#
 
 #   - name: change string--转换变量
