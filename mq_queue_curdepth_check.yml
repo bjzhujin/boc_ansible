@@ -49,8 +49,9 @@
        - "{{ mqm_queue_curdepth_check_result }}"
 
     - name: 写入检查报告
-      shell:
-        "echo {{ ansible_date_time.date ~ ' ' ~ ansible_date_time.time ~ ' ' ~ mqm_queue_curdepth_check_result.stdout | quote }} >> {{ report_dir }}/{{ report_name }}"
+      shell: |
+         echo -e "\nMQ服务器队列深度检查：" >> {{ report_dir | quote }}/{{ report_name | quote }}
+         echo {{ ansible_date_time.date ~ ' ' ~ ansible_date_time.time ~ ' ' ~ mqm_queue_curdepth_check_result.stdout | quote }} >> {{ report_dir | quote }}/{{ report_name | quote }}
       run_once: true
       delegate_to: localhost
       ignore_errors: True
