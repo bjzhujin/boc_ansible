@@ -1,0 +1,50 @@
+---
+      - name: 暂停playbook执行!
+        pause:
+          prompt: "是否重启{{ area_item  }}区域应用(y/n)?"
+          echo: yes
+        register: restrmq_id_result
+        run_once: true
+#       tags: restartmq  #
+
+
+      - name: 暂停输入值赋值到restart_mq_temp全局变量
+        set_fact: restart_mq_temp="{{ restrmq_id_result.user_input }}"
+        run_once: true
+
+#     - name: 重启{{ area_item  }}区域应用:注以MQ集群监听重启为例
+      - name:  重启{{ inventory_hostname }} MQ服务器MQ监听
+        shell: |
+          echo "stop  LISTENER ({{ mq_listener }})"|runmqsc {{ mqmer }}
+          sleep 1
+          echo "start  LISTENER ({{ mq_listener }})"|runmqsc {{ mqmer }}
+        when: restart_mq_temp
+        become: yes
+        become_method: su
+        become_user: mqm
+        register: restart_result
+
+      - name: 监控{{ inventory_hostname }} mq监听端口
+        wait_for:
+          port: "{{ mq_port }}"
+          state: started
+          host: "{{ inventory_hostname  }}"
+          timeout: 30
+        register: restart_wait_result
+#       when: inventory_hostname  in groups['online_server']
+        ignore_errors: True
+
+      - debug:
+          msg: "{{ inventory_hostname }} MQ队列管理器{{ mqmer }}的{{ mq_listener }} 监听重启动成功,{{  mq_port }}端口正常!"
+        when:  restart_result | changed  and restart_wait_result | succeeded
+        ignore_errors: True
+
+      - debug:
+          msg: "{{ inventory_hostname }} MQ队列管理器{{ mqmer }}的{{ mq_listener }} 监听重启动失败,{{  mq_port }}端口异常!"
+        when: restart_wait_result | failed
+        ignore_errors: True
+
+      - debug:
+          msg: "{{ inventory_hostname }} MQ队列管理器{{ mqmer }}的{{ mq_listener }} 监听未重启,{{  mq_port }}端口正常!"
+        when:  restart_result | skipped  and  restart_wait_result | succeeded
+        ignore_errors: True

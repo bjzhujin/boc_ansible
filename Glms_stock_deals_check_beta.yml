@@ -44,7 +44,7 @@
     mysql_sts_check_sh_name: "sts_flag_check.sh"                                       #STS系统外调标识检查脚本名称     #
     glms_date_time_name: "glms_date_time.sh"                                           #                                #
     glms_date_time_change_name: "glms_date_time_change.sh"                             #python交易时间区间程序          #
-    response_time: "30"                                                                  #交易响应时间(秒)                #
+    response_time: "10"                                                                  #交易响应时间(秒)                #
     flag_bnkno: "138"                                                                  #澳门行号                        #
     outjnlid: "141080"                                                                 #STS系统交易码                   # 
     mysql_sh_name: "mysql_run.sh"                                                      #测试脚本                        #
@@ -58,6 +58,7 @@
     list1: ['1','2','3']
     queue_curdepth_max: 100
     glms_ips_ok: "0000" 
+    restart_mq_temp: " "
 #***********************************************开始分布式并行任务****************************************************************#
    tasks:
     - name: 去除 {{ bocs_err_code }} 中的空格
@@ -504,8 +505,52 @@
       when:  item.stdout.encode() != ""
       with_items:
           - "{{ glms_sts_log_result.results }}"
-      delegate_to: localhost 
+      delegate_to: localhost
 
+    - name: "{{ inventory_hostname }} 暂停！ "
+      pause:  
+        prompt: "是否重启MQ监听(y/n)?"
+        echo: yes
+      register: restrmq_id_result
+      tags: restartmq
+
+
+    - name: 暂停输入结果赋值到restart_mq_temp
+      set_fact: restart_mq_temp="{{ restrmq_id_result.user_input }}" 
+      run_once: true
+
+#   - name: 显示restart_mq_temp暂停输入结果
+    - debug:
+        msg: "{{ inventory_hostname }}"
+
+
+    - name:  重启MQ监听
+      shell: |
+          echo "stop  LISTENER ({{ mq_listener }})"|runmqsc {{ mqmer }}
+          sleep 2 
+          echo "start  LISTENER ({{ mq_listener }})"|runmqsc {{ mqmer }}
+      when: restart_mq_temp
+      become: yes
+      become_method: su
+      become_user: mqm
+
+    - name: 监控mq监听端口
+      wait_for:
+          port: "{{ mq_port }}"
+          state: started
+          host: "{{ inventory_hostname  }}"
+      register: restart_result
+#     when: "{{ inventory_hostname }} in groups['online_server']"
+      ignore_errors: True
+
+    - debug:
+        msg: "{{ inventory_hostname }} MQ 监听端口 {{  mq_port }} 启动成功!"
+      when:  restart_result | succeeded
+
+    - debug:
+        msg: "{{ inventory_hostname }} MQ 监听端口 {{  mq_port }} 启动失败!"
+      when: restart_result | failed  
+#
  
 #5===============================================end在交易日志log中提取外调STS系统详细交易日志=============================#
 

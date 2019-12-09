@@ -58,6 +58,9 @@
     list1: ['1','2','3']
     queue_curdepth_max: 100
     glms_ips_ok: "0000" 
+    search_rate: ".*0\\.[0-9][0-8].*|\\.*0.[0-8]9.*"
+    search_rate_file: "GLMS_rate.txt"
+    restart_mq_temp: " "
 #***********************************************开始分布式并行任务****************************************************************#
    tasks:
     - name: 去除 {{ bocs_err_code }} 中的空格
@@ -159,8 +162,16 @@
       delegate_to: localhost
       ignore_errors: True
     - name: 写入检查报告 
-      shell:
-        "echo {{'                             ' ~ '额度系统澳门股票交易检查报告' | quote  }} > {{ report_dir }}/{{ report_name }}"
+      shell: |
+          echo '---------------------------------------额度系统澳门股票交易检查报告--------------------------------------' > {{ report_dir | quote }}/{{ report_name  | quote }}
+          cat >> {{ report_dir | quote }}/{{ report_name  | quote }} << 针对以上输入值进行合法性验证：
+            {{ '核心系统提供的原始输入值：' }}
+            {{ '核心系统报错码：' ~  bocs_err_code  | quote }}
+            {{ '额度交易码：'  ~  tran_code | quote }}
+            {{ '核心系统交易账号：' ~  account_no  | quote }}
+            {{ '错误返回码：' ~  retun_code  | quote }}
+            针对以上输入值进行合法性验证：
+
       run_once: true
       delegate_to: localhost
       ignore_errors: True
@@ -231,9 +242,11 @@
       run_once: true
       delegate_to: localhost
       ignore_errors: True
+
     - name: 写入检查报告
-      shell:
-        "echo {{ ansible_date_time.date ~ ' ' ~ ansible_date_time.time ~ ' ' ~ sts_flag_check_result.stdout | quote }} >> {{ report_dir }}/{{ report_name }}"
+      shell: |
+         echo -e "\n澳门STS系统外调交易标识检查:" >> {{ report_dir | quote }}/{{ report_name  | quote }}
+         echo {{ ansible_date_time.date ~ ' ' ~ ansible_date_time.time ~ ' ' ~ sts_flag_check_result.stdout | quote }} >> {{ report_dir }}/{{ report_name }}
       run_once: true
       delegate_to: localhost
       ignore_errors: True 
@@ -249,33 +262,26 @@
 #3========================================start检查MQ是否正常===============================================#
 
     - name: 提取MQ队列管理器名称
-      shell: dspmq
+      command: dspmq
       register: mqm_name_result
 
 
-  # - debug:
-  #     msg: "{{ mqm_name_result.stdout_lines }}"
-  # - debug:
-  #     msg: "{%- for sub_item in mqm_name_result.stdout_lines -%} {{ sub_item }} {%- endfor -%}"
-
-    - debug:
-        msg: "{{ item | regex_findall('\\((.*)\\)\\s+') }}"
-
-      when: item.find('Running') != -1 
-      with_items:
-       - "{{ mqm_name_result.stdout_lines }}"
+#   - debug:
+#       msg: "{{ item | regex_findall('\\((.*)\\)\\s+') }}"
+#     when: item.find('Running') != -1 
+#     with_items:
+#      - "{{ mqm_name_result.stdout_lines }}"
 
     - name: mqm_name_result-合并列表
       set_fact: mqm_name_tmp_list="{{ mqm_name_tmp_list }} + {{ item | regex_findall('\\((.*)\\)\\s+') }}" 
-#     set_fact: mqm_name_tmp_list="{{ mqm_name_tmp_list }} + [ '{{ item }}' ]"
       when: item.find('Running') != -1
       with_items:
        - "{{ mqm_name_result.stdout_lines }}" 
 
-    - debug:
-        msg: "{{ item }}"
-      with_items:
-       - "{{ mqm_name_tmp_list }}"
+#   - debug:
+#       msg: "{{ item }}"
+#     with_items:
+#      - "{{ mqm_name_tmp_list }}"
 
     - name: 检查MQ通道状态
       shell: echo "dis chs (*)"|runmqsc {{ item }} 
@@ -286,11 +292,11 @@
       with_items:
        - "{{ mqm_name_tmp_list }}"
 
-    - debug:
-        msg: "{{ item.stdout_lines }}"
-        verbosity: 0
-      with_items:
-       - "{{ mqm_CHANNEL_check_result.results }}"
+#   - debug:
+#       msg: "{{ item.stdout_lines }}"
+#       verbosity: 0
+#     with_items:
+#      - "{{ mqm_CHANNEL_check_result.results }}"
 
     - name: 判断通道是否正常运行 
       include_tasks: mq_channel_check.yml
@@ -407,8 +413,9 @@
           msg: "{{ glms_ips_back_check_result.stdout }}"
 
       - name: 写入检查报告 
-        shell:
-         "echo {{ ansible_date_time.date ~ ' ' ~ ansible_date_time.time ~ ' ' ~  glms_ips_back_check_result.stdout | quote }} >> {{ report_dir }}/{{ report_name }}" 
+        shell: |
+         echo -e "\nGLMS系统通过IPS系统外调STS系统情况:" >> {{ report_dir | quote }}/{{ report_name | quote }}
+         echo {{ ansible_date_time.date ~ ' ' ~ ansible_date_time.time ~ ' ' ~  glms_ips_back_check_result.stdout | quote }} >> {{ report_dir | quote }}/{{ report_name | quote }} 
       when:  get_account_flno | length  != 0
       run_once: true
       delegate_to: localhost
@@ -434,16 +441,16 @@
       run_once: true
       register: date_time
 
-    - name: 打印变量  {{ glms_ips_date }} {{ glms_ips_time }} {{ glms_ips_rnid }} {{ date_time }} 的值
-      debug:
-         msg: "{{ item }}"
-      with_items:
-        - "{{ glms_ips_date }}"
-        - "{{ glms_ips_time }}"
-        - "{{ glms_ips_rnid }}"
-        - "{{ date_time }}"
-      run_once: true
-      delegate_to: localhost
+#   - name: 打印变量  {{ glms_ips_date }} {{ glms_ips_time }} {{ glms_ips_rnid }} {{ date_time }} 的值
+#     debug:
+#        msg: "{{ item }}"
+#     with_items:
+#       - "{{ glms_ips_date }}"
+#       - "{{ glms_ips_time }}"
+#       - "{{ glms_ips_rnid }}"
+#       - "{{ date_time }}"
+#     run_once: true
+#     delegate_to: localhost
 
     - set_fact: glms_dt="{{ date_time.stdout }}"
 
@@ -481,71 +488,68 @@
       when:  item.stdout.encode() != ""
       with_items:
           - "{{ glms_sts_log_result.results }}"
-
+    - shell: |
+         echo -e "\nGLMS系统外调STS系统交易明细:" >> {{ report_dir | quote }}/{{ report_name | quote }}
+      delegate_to: localhost
+      run_once: true
+      
     - name: 写入检查报告
       blockinfile:
            path: "{{ report_dir }}/{{ report_name }}"
-           block: "{{ ansible_date_time.date ~ ' ' ~ ansible_date_time.time  ~ ' ' ~  item.cmd.replace('| cat','\n') ~ '\n' ~  item.stdout }}"
+           block: "{{ ansible_date_time.date ~ ' ' ~ ansible_date_time.time  ~ ' ' ~  item.cmd.replace('| cat','') ~ '\n' ~ item.stdout ~ '\n' }}"
            marker: "#{mark} 检索到的{{ item.cmd.replace('| cat','') }}交易日志\n"
       when:  item.stdout.encode() != ""
       with_items:
           - "{{ glms_sts_log_result.results }}"
-      delegate_to: localhost 
+      delegate_to: localhost
 
- 
 #5===============================================end在交易日志log中提取外调STS系统详细交易日志=============================#
 
-#   - name: change string--转换变量
-#     set_fact: result_change=[]
-
-    - name:  mysql_select_all_无参数化查询
-      shell: mysql -u {{ db_user }} --password={{ db_password }} -h {{ db_server }} -N</root/mysql_tmp/select_table.sql
-      #  chdir: /root/mysql_tmp
-      delegate_to: "{{ db_server }}"
-      register: mysql_result
-      ignore_errors: True
-
-    - debug:
-       # msg: "{{ mysql_result.stdout_lines }}"
-         var: mysql_result.stdout
-
-    - name:   shell-command print
-      command: echo {{ mysql_result.stdout_lines }}
-      register: mysql_result_shell
-
-    - debug:
-       # msg: "{{ mysql_result.stdout_lines }}"
-         var: mysql_result_shell
-
-#   - name:   for print more results
-#      debug:
-#        msg="{% for i in {{ mysql_result.results }} %} {{ i.stdout }} {% endfor %}"
-
-    - name: change more_result,change_string--转换变量
-      set_fact: result_change="{{ mysql_result.stdout.split(',') }}"
-      when: mysql_result.stdout.find(',') != -1
-
-
-    - name:  wich_item_result_change_print 使用转换后的变量遍历数据
+#6=================================================start重启MQ集群监听======================================================#
+    - name: 检查提取日志是否存在错误
+      find:
+        paths: "{{ logdir }}" 
+        contains: 'failed|(E|e)rror' 
+        recurse: yes
+        file_type: any
+#        age: -5m
+      register: log_failed_result
+     
+    - name: 显示日志是否存在错误
       debug:
-        msg: "{%- for sub_item in item -%} {{ sub_item }} {%- endfor -%}"
-      with_items:
-        - "{{ result_change }}"
-      when: result_change is defined 
+        msg: "{{ log_failed_result.matched }}"
+      
+    - name: 检查5分钟交易成功率
+      find:
+        paths: "{{ report_dir }}"
+        contains: "{{ search_rate }}"
+      register: report_rate_result
+      run_once: true
+      delegate_to: localhost
 
-    - name: print 非转换的单一结果
-      debug:
-        msg: “{{ mysql_result.stdout }}”
-      when: result_change is undefined
 
+    - block:
+      - name: 确定重启区域
+        shell: |
+           grep -E {{ search_rate | quote }} {{ report_dir }}/{{ search_rate_file }} | awk -F"|" '{print $7}'
+        register: restart_area_result
+        run_once: true
+        delegate_to: localhost
+        ignore_errors: True
+      - set_fact: restart_area="{{ restart_area_result.stdout.replace('\n',',') }}"
+          
+      - name: 显示区域
+        debug:
+          msg: "{{ restart_area }}"
+        run_once: true
+        delegate_to: localhost
+        ignore_errors: True
 
-    - name: change result_lines_string--转换变量
-      set_fact: result_lines_change="{{ ",".join(mysql_result.stdout_lines) }}"
-
-    - name:  wich_item_stdout_lines_print
-      debug:
-     #  msg: "{{ item }}"
-        msg: "{%- for sub_item in item -%} {{ sub_item }} {%- endfor -%}"
-      with_items: 
-          - "{{ result_lines_change.split(',') }}"
-#-----------------------------------------------------------playbook:----------------------------------------------------#
+      - include_tasks: restart_app.yml
+        with_items:
+          - "{{ restart_area.split(',') }}"
+        loop_control:
+          loop_var: area_item
+      when: log_failed_result.matched >= 1  and report_rate_result.matched >= 1
+#
+#6=================================================end 重启MQ集群监听======================================================# 
